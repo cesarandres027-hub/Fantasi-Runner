@@ -1,0 +1,135 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Fantasi Runner</title>
+<style>
+  :root { --bg:#0b0f1a; --fg:#f8f8f8; --accent:#ffcc00; --ground:#1a2133; }
+  html,body{margin:0;height:100%;background:var(--bg);color:var(--fg);font-family:system-ui,Segoe UI,Roboto,Arial}
+  .wrap{max-width:720px;margin:0 auto;padding:12px}
+  h1{font-size:18px;margin:10px 0;text-align:center}
+  .game {position:relative;background:linear-gradient(#0b0f1a,#0b0f1a 70%,var(--ground) 70%,var(--ground));
+         border-radius:12px;overflow:hidden;box-shadow:0 10px 30px rgba(0,0,0,.3)}
+  canvas{display:block;width:100%;height:auto;touch-action:none}
+  .hud{position:absolute;inset:8px auto auto 8px;font-weight:700;opacity:.9}
+  .btns{display:flex;gap:8px;justify-content:center;margin:10px 0}
+  .btn{background:var(--accent);color:#222;border:0;border-radius:10px;padding:10px 14px;font-weight:700}
+  .tip{font-size:13px;text-align:center;opacity:.8}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>🦖 Fantasi Runner — toca o presiona ↑ / Espacio para saltar</h1>
+  <div class="game">
+    <canvas id="c" width="720" height="300"></canvas>
+    <div class="hud">Puntaje: <span id="sc">0</span></div>
+  </div>
+  <div class="btns">
+    <button class="btn" id="jumpBtn">Saltar</button>
+    <button class="btn" id="restartBtn" style="display:none">Reiniciar</button>
+  </div>
+  <div class="tip">Compatibilidad móvil: toca la pantalla o el botón “Saltar”.</div>
+</div>
+
+<script>
+(() => {
+  const cvs = document.getElementById('c'), ctx = cvs.getContext('2d');
+  const W = cvs.width, H = cvs.height, GROUND = H*0.75;
+  let running = true, score = 0, best = 0, t = 0;
+  const player = {x: 80, y: GROUND-40, w: 32, h: 40, vy:0, onGround:true};
+  const obstacles = [];
+  const scEl = document.getElementById('sc');
+  const jumpBtn = document.getElementById('jumpBtn');
+  const restartBtn = document.getElementById('restartBtn');
+
+  function rnd(a,b){return Math.random()*(b-a)+a}
+  function rect(x,y,w,h,col){ctx.fillStyle=col;ctx.fillRect(x,y,w,h)}
+  function dino(x,y,w,h){
+    // cuerpo simple estilo dino
+    rect(x,y,w,h,"#e6e6e6");
+    rect(x+w-6,y+6,6,8,"#000"); // ojo
+    rect(x-6,y+h-12,12,12,"#e6e6e6"); // cola
+  }
+  function cloud(x,y){ctx.fillStyle="rgba(255,255,255,.15)"; ctx.beginPath();
+    ctx.arc(x,y,16,0,Math.PI*2); ctx.arc(x+18,y+4,14,0,Math.PI*2);
+    ctx.arc(x-14,y+6,12,0,Math.PI*2); ctx.fill(); }
+
+  let clouds = Array.from({length:6},()=>({x:rnd(0,W),y:rnd(20,120),s:rnd(.2,.6)}));
+
+  function spawnObs(){
+    const h = rnd(28,48), w = rnd(18,26);
+    obstacles.push({x:W+20, y:GROUND-h, w, h, s:rnd(3.6,5.2)});
+  }
+
+  let nextSpawn = 0;
+
+  function step(){
+    if(!running) return;
+    requestAnimationFrame(step);
+    t+=1; ctx.clearRect(0,0,W,H);
+
+    // cielo y suelo
+    rect(0,GROUND,W,H-GROUND,"#1a2133");
+    ctx.strokeStyle="#24304d"; ctx.lineWidth=2; ctx.beginPath();
+    ctx.moveTo(0,GROUND+.5); ctx.lineTo(W,GROUND+.5); ctx.stroke();
+
+    // nubes
+    clouds.forEach(cl=>{ cl.x-=cl.s; if(cl.x<-30) cl.x=W+30; cloud(cl.x,cl.y); });
+
+    // jugador
+    player.vy += 0.7; player.y += player.vy;
+    if(player.y >= GROUND-player.h){ player.y = GROUND-player.h; player.vy=0; player.onGround=true; }
+    dino(player.x,player.y,player.w,player.h);
+
+    // obstáculos
+    if(t>nextSpawn){ spawnObs(); nextSpawn = t + rnd(60,120); }
+    for(let i=obstacles.length-1;i>=0;i--){
+      const o=obstacles[i]; o.x -= o.s;
+      rect(o.x,o.y,o.w,o.h,"#ffcc00");
+      if(o.x+o.w<0) obstacles.splice(i,1);
+      // colisión
+      if(o.x < player.x+player.w && o.x+o.w > player.x && o.y < player.y+player.h && o.y+o.h > player.y){
+        running=false; best=Math.max(best,score);
+        gameOver(); return;
+      }
+    }
+
+    // puntuación
+    if(t%3===0){ score++; scEl.textContent = score; }
+
+    // velocidad progresiva
+    obstacles.forEach(o=>o.s += 0.0008);
+  }
+
+  function jump(){
+    if(!running) return;
+    if(player.onGround){ player.vy = -12; player.onGround=false; }
+  }
+
+  function gameOver(){
+    const msg = `☠️ Fin del juego\nPuntaje: ${score}  |  Récord: ${best}`;
+    ctx.fillStyle="rgba(0,0,0,.6)"; rect(0,0,W,H,"rgba(0,0,0,.6)");
+    ctx.fillStyle="#fff"; ctx.font="bold 22px system-ui,Segoe UI,Roboto";
+    ctx.textAlign="center"; ctx.fillText(msg, W/2, H/2);
+    restartBtn.style.display='inline-block';
+  }
+
+  function restart(){
+    obstacles.length=0; score=0; t=0; running=true;
+    player.y=GROUND-40; player.vy=0; player.onGround=true;
+    scEl.textContent=score; restartBtn.style.display='none';
+    step();
+  }
+
+  // controles
+  window.addEventListener('keydown',e=>{ if(e.code==='Space'||e.code==='ArrowUp') jump(); });
+  cvs.addEventListener('pointerdown',jump);
+  jumpBtn.addEventListener('click',jump);
+  restartBtn.addEventListener('click',restart);
+
+  step();
+})();
+</script>
+</body>
+</html>
